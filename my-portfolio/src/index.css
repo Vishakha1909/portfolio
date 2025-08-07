@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@theme {
+  --font-pixel: "Press Start 2P", cursive;
+  --color-blush: #ffe3ec;
+  --color-mint: #dafbe1;
+  --color-lavender: #e6e6fa;
+  --color-techyGray: #1a1a1a;
+}
+
+body {
+  cursor: url('/cursor.cur'), auto;
+}
