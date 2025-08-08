@@ -10,37 +10,55 @@ export default function InteractiveBackground() {
     let width = canvas.width = window.innerWidth;
     let height = canvas.height = window.innerHeight;
 
+    const pastelColors = [
+      '#ffd6e8',
+      '#dafbe1',
+      '#e0e7ff',
+      '#ffe3ec',
+      '#f0f4ff',
+      '#e6f7f1',
+      '#fef3c7',
+    ];
+
     const pixelGrid = [];
 
     for (let x = 0; x < width; x += gridSize) {
       for (let y = 0; y < height; y += gridSize) {
-        pixelGrid.push({ x, y, alpha: 0 });
+        pixelGrid.push({
+          x,
+          y,
+          alpha: 0,
+          color: pastelColors[Math.floor(Math.random() * pastelColors.length)],
+        });
       }
     }
 
     const draw = () => {
       ctx.clearRect(0, 0, width, height);
+
+      // Draw base pixel grid (more visible)
+      for (let p of pixelGrid) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.fillRect(p.x, p.y, gridSize - 1, gridSize - 1);
+      }
+
+      // Glow effect
       for (let p of pixelGrid) {
         if (p.alpha > 0) {
-          // 3D pixel shading illusion
-          const baseColor = `rgba(255, 255, 255, ${p.alpha})`;
+          ctx.fillStyle = p.color;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = p.color;
+          ctx.fillRect(p.x, p.y, gridSize - 2, gridSize - 2);
 
-          // Simulated light from top left
-          const shadowColor = `rgba(0, 0, 0, ${p.alpha * 0.3})`;
-
-          ctx.fillStyle = baseColor;
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = baseColor;
-          ctx.fillRect(p.x, p.y, gridSize, gridSize);
-
-          // Simulated depth shadow (bottom-right side)
-          ctx.fillStyle = shadowColor;
+          // Optional depth shading
           ctx.shadowBlur = 0;
+          ctx.fillStyle = `rgba(0, 0, 0, ${p.alpha * 0.2})`;
           ctx.fillRect(p.x + 2, p.y + 2, gridSize - 4, gridSize - 4);
 
-          p.alpha -= 0.01;
+          p.alpha -= 0.015;
         }
       }
+
       requestAnimationFrame(draw);
     };
 
@@ -50,7 +68,7 @@ export default function InteractiveBackground() {
       for (let p of pixelGrid) {
         const dist = Math.hypot(p.x - mx, p.y - my);
         if (dist < gridSize * 3) {
-          p.alpha = 0.4;
+          p.alpha = 0.6;
         }
       }
     };
