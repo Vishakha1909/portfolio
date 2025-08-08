@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 
 export default function InteractiveBackground() {
   const canvasRef = useRef(null);
-  const gridSize = 20;
+  const gridSize = 9;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -11,24 +11,17 @@ export default function InteractiveBackground() {
     let height = canvas.height = window.innerHeight;
 
     const pastelColors = [
-      '#ffd6e8',
-      '#dafbe1',
-      '#e0e7ff',
-      '#ffe3ec',
-      '#f0f4ff',
-      '#e6f7f1',
-      '#fef3c7',
+      '#ffd6e8', '#dafbe1', '#e0e7ff', '#ffe3ec', '#f0f4ff', '#e6f7f1', '#fef3c7'
     ];
 
     const pixelGrid = [];
-
     for (let x = 0; x < width; x += gridSize) {
       for (let y = 0; y < height; y += gridSize) {
         pixelGrid.push({
           x,
           y,
           alpha: 0,
-          color: pastelColors[Math.floor(Math.random() * pastelColors.length)],
+          color: pastelColors[Math.floor(Math.random() * pastelColors.length)]
         });
       }
     }
@@ -36,26 +29,23 @@ export default function InteractiveBackground() {
     const draw = () => {
       ctx.clearRect(0, 0, width, height);
 
-      // Draw base pixel grid (more visible)
       for (let p of pixelGrid) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+        // Base pixel grid
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
         ctx.fillRect(p.x, p.y, gridSize - 1, gridSize - 1);
-      }
 
-      // Glow effect
-      for (let p of pixelGrid) {
-        if (p.alpha > 0) {
+        // Hover glow effect
+        if (p.alpha > 0.01) {
           ctx.fillStyle = p.color;
-          ctx.shadowBlur = 10;
+          ctx.shadowBlur = 12;
           ctx.shadowColor = p.color;
-          ctx.fillRect(p.x, p.y, gridSize - 2, gridSize - 2);
+          ctx.fillRect(p.x + 1, p.y + 1, gridSize - 4, gridSize - 4);
 
-          // Optional depth shading
           ctx.shadowBlur = 0;
-          ctx.fillStyle = `rgba(0, 0, 0, ${p.alpha * 0.2})`;
-          ctx.fillRect(p.x + 2, p.y + 2, gridSize - 4, gridSize - 4);
+          ctx.fillStyle = `rgba(0, 0, 0, ${p.alpha * 0.1})`;
+          ctx.fillRect(p.x + 2, p.y + 2, gridSize - 5, gridSize - 5);
 
-          p.alpha -= 0.015;
+          p.alpha -= 0.006; // smoother fade
         }
       }
 
@@ -67,7 +57,7 @@ export default function InteractiveBackground() {
       const my = e.clientY;
       for (let p of pixelGrid) {
         const dist = Math.hypot(p.x - mx, p.y - my);
-        if (dist < gridSize * 3) {
+        if (dist < gridSize * 1.2) {
           p.alpha = 0.6;
         }
       }
@@ -76,9 +66,7 @@ export default function InteractiveBackground() {
     window.addEventListener('mousemove', handleMouseMove);
     draw();
 
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-    };
+    return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
   return (
