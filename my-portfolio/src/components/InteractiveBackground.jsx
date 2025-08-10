@@ -2,71 +2,166 @@ import { useEffect, useRef } from 'react';
 
 export default function InteractiveBackground() {
   const canvasRef = useRef(null);
-  const gridSize = 9;
+
+  // visuals / feel
+  const GRID_SIZE = 12;          // pixel size
+  const DENSITY = 0.28;          // trail density (how many can light up when you hover/touch)
+  const RADIUS_MULT = 2.0;       // trail radius multiplier
+  const MAX_ALPHA = 0.7;         // peak glow
+  const FADE_SPEED = 0.004;      // trail fade per frame
+  const SHADOW_BLUR = 14;        // glow softness
+
+  // NEW: only this fraction of pixels float when idle
+  const IDLE_FRACTION = 0.15;    // 15% of pixels float
+  const IDLE_AMPLITUDE = 1.2;    // how far the idle pixels drift
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    let width = canvas.width = window.innerWidth;
-    let height = canvas.height = window.innerHeight;
+
+    // HiDPI setup
+    const setupCanvas = () => {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS px
+      return { w, h };
+    };
+
+    let { w: width, h: height } = setupCanvas();
 
     const pastelColors = [
       '#ffd6e8', '#dafbe1', '#e0e7ff', '#ffe3ec', '#f0f4ff', '#e6f7f1', '#fef3c7'
     ];
 
-    const pixelGrid = [];
-    for (let x = 0; x < width; x += gridSize) {
-      for (let y = 0; y < height; y += gridSize) {
-        pixelGrid.push({
-          x,
-          y,
-          alpha: 0,
-          color: pastelColors[Math.floor(Math.random() * pastelColors.length)]
-        });
-      }
-    }
+    // stable hash (0..1) so selection is consistent per pixel
+    const hash = (x, y) => {
+      const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      return s - Math.floor(s);
+    };
 
-    const draw = () => {
+    // build grid (CSS px)
+    let pixelGrid = [];
+    const buildGrid = () => {
+      pixelGrid = [];
+      for (let x = 0; x < width; x += GRID_SIZE) {
+        for (let y = 0; y < height; y += GRID_SIZE) {
+          const stamp = hash(x, y); // stable 0..1
+          pixelGrid.push({
+            baseX: x,
+            baseY: y,
+            alpha: 0,
+            floatOffset: Math.random() * Math.PI * 2,
+            color: pastelColors[Math.floor(Math.random() * pastelColors.length)],
+            stamp,                           // for trail density gating
+            idleLift: stamp < IDLE_FRACTION, // << only some pixels float when idle
+          });
+        }
+      }
+    };
+
+    buildGrid();
+
+    // active pointers (mouse/touch)
+    let pointers = [];
+
+    const smoothstep = (t) => t * t * (3 - 2 * t);
+
+    const draw = (time) => {
       ctx.clearRect(0, 0, width, height);
 
       for (let p of pixelGrid) {
-        // Base pixel grid
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-        ctx.fillRect(p.x, p.y, gridSize - 1, gridSize - 1);
+        // idle float only if pixel is in the selected subset
+        const fx = p.idleLift ? Math.cos(time / 1200 + p.floatOffset) * IDLE_AMPLITUDE : 0;
+        const fy = p.idleLift ? Math.sin(time / 1000 + p.floatOffset) * IDLE_AMPLITUDE : 0;
 
-        // Hover glow effect
+        const x = p.baseX + fx;
+        const y = p.baseY + fy;
+
+        // base grid tile (visible lattice)
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(x, y, GRID_SIZE - 1, GRID_SIZE - 1);
+
+        // proximity (mouse/touch → trail)
+        if (pointers.length) {
+          let minD = Infinity;
+          for (const pt of pointers) {
+            const dx = p.baseX - pt.x;
+            const dy = p.baseY - pt.y;
+            const d = Math.hypot(dx, dy);
+            if (d < minD) minD = d;
+          }
+          const radius = GRID_SIZE * RADIUS_MULT;
+          if (minD < radius) {
+            const t0 = 1 - minD / radius;   // 0..1
+            const t = smoothstep(t0);
+            // gate by density so not all nearby pixels light up
+            if (p.stamp < DENSITY * t) {
+              p.alpha = Math.max(p.alpha, t * MAX_ALPHA);
+            }
+          }
+        }
+
+        // glow + soft lift (on trail)
         if (p.alpha > 0.01) {
+          const lift = p.alpha * 2.2; // slight lift as it glows
           ctx.fillStyle = p.color;
-          ctx.shadowBlur = 12;
+          ctx.shadowBlur = SHADOW_BLUR;
           ctx.shadowColor = p.color;
-          ctx.fillRect(p.x + 1, p.y + 1, gridSize - 4, gridSize - 4);
+          ctx.fillRect(x + 1, y + 1 - lift, GRID_SIZE - 3, GRID_SIZE - 3);
 
           ctx.shadowBlur = 0;
-          ctx.fillStyle = `rgba(0, 0, 0, ${p.alpha * 0.1})`;
-          ctx.fillRect(p.x + 2, p.y + 2, gridSize - 5, gridSize - 5);
+          ctx.fillStyle = `rgba(0,0,0,${p.alpha * 0.12})`;
+          ctx.fillRect(x + 2, y + 2 - lift, GRID_SIZE - 4, GRID_SIZE - 4);
 
-          p.alpha -= 0.006; // smoother fade
+          // fade out
+          p.alpha -= FADE_SPEED;
         }
       }
 
       requestAnimationFrame(draw);
     };
 
-    const handleMouseMove = (e) => {
-      const mx = e.clientX;
-      const my = e.clientY;
-      for (let p of pixelGrid) {
-        const dist = Math.hypot(p.x - mx, p.y - my);
-        if (dist < gridSize * 1.2) {
-          p.alpha = 0.6;
-        }
-      }
+    // input handlers
+    const updateFromMouse = (e) => {
+      pointers = [{ x: e.clientX, y: e.clientY }];
+    };
+    const clearPointers = () => { pointers = []; };
+    const updateFromTouches = (e) => {
+      pointers = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }));
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    draw();
+    // listeners (passive for smooth scroll)
+    window.addEventListener('mousemove', updateFromMouse, { passive: true });
+    window.addEventListener('mouseleave', clearPointers, { passive: true });
+    window.addEventListener('touchstart', updateFromTouches, { passive: true });
+    window.addEventListener('touchmove', updateFromTouches, { passive: true });
+    window.addEventListener('touchend', updateFromTouches, { passive: true });
+    window.addEventListener('touchcancel', updateFromTouches, { passive: true });
 
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+    // resize / DPR changes
+    const handleResize = () => {
+      const d = setupCanvas();
+      width = d.w; height = d.h;
+      buildGrid();
+    };
+    window.addEventListener('resize', handleResize);
+
+    requestAnimationFrame(draw);
+
+    return () => {
+      window.removeEventListener('mousemove', updateFromMouse);
+      window.removeEventListener('mouseleave', clearPointers);
+      window.removeEventListener('touchstart', updateFromTouches);
+      window.removeEventListener('touchmove', updateFromTouches);
+      window.removeEventListener('touchend', updateFromTouches);
+      window.removeEventListener('touchcancel', updateFromTouches);
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
   return (
